@@ -23,11 +23,14 @@ func TestGitHubCommentProxyService(t *testing.T) {
 		assert  func(*testing.T, error, *ghcpv1.CreatePullRequestCommentResponse)
 	}{
 		{
-			name:   "create new comment",
-			config: GitHubCommentProxyServiceConfig{},
+			name: "create new comment",
+			config: GitHubCommentProxyServiceConfig{
+				GitHubTokenAudienceName: GitHubTokenAudienceName,
+			},
 			token: &gh.GitHubTokenContext{
 				Repository:      "safedep/ghcp",
 				RepositoryOwner: "safedep",
+				Audience:        GitHubTokenAudienceName,
 			},
 			mock: func(m *github.MockGitHubIssueAdapter) {
 				m.EXPECT().CreateIssueComment(mock.Anything, "safedep", "ghcp", 1,
@@ -58,11 +61,32 @@ func TestGitHubCommentProxyService(t *testing.T) {
 			},
 		},
 		{
+			name: "create comment fails when audience in request does not match token context",
+			config: GitHubCommentProxyServiceConfig{
+				GitHubTokenAudienceName: GitHubTokenAudienceName,
+			},
+			token: &gh.GitHubTokenContext{
+				Repository:      "safedep/ghcp",
+				RepositoryOwner: "safedep",
+				Audience:        "safedep-ghcp-test",
+			},
+			request: &ghcpv1.CreatePullRequestCommentRequest{
+				Owner:    "safedep",
+				Repo:     "ghcp",
+				PrNumber: "1",
+			},
+			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
+				assert.Error(t, err)
+				assert.Nil(t, res)
+			},
+		},
+		{
 			name:   "create comment fails when owner in request does not match token context",
 			config: GitHubCommentProxyServiceConfig{},
 			token: &gh.GitHubTokenContext{
 				Repository:      "safedep/ghcp",
 				RepositoryOwner: "safedep",
+				Audience:        GitHubTokenAudienceName,
 			},
 			request: &ghcpv1.CreatePullRequestCommentRequest{
 				Owner:    "safedep-test",
@@ -80,6 +104,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 			token: &gh.GitHubTokenContext{
 				Repository:      "safedep/ghcp-test",
 				RepositoryOwner: "safedep",
+				Audience:        GitHubTokenAudienceName,
 			},
 			request: &ghcpv1.CreatePullRequestCommentRequest{
 				Owner:    "safedep",
@@ -100,6 +125,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				Repository:           "safedep/ghcp",
 				RepositoryOwner:      "safedep",
 				RepositoryVisibility: "private",
+				Audience:             GitHubTokenAudienceName,
 			},
 			request: &ghcpv1.CreatePullRequestCommentRequest{
 				Owner: "safedep",
@@ -111,11 +137,14 @@ func TestGitHubCommentProxyService(t *testing.T) {
 			},
 		},
 		{
-			name:   "update comment is successful when tag is provided and comment exists",
-			config: GitHubCommentProxyServiceConfig{},
+			name: "update comment is successful when tag is provided and comment exists",
+			config: GitHubCommentProxyServiceConfig{
+				GitHubTokenAudienceName: GitHubTokenAudienceName,
+			},
 			token: &gh.GitHubTokenContext{
 				Repository:      "safedep/ghcp",
 				RepositoryOwner: "safedep",
+				Audience:        GitHubTokenAudienceName,
 			},
 			mock: func(m *github.MockGitHubIssueAdapter) {
 				m.EXPECT().ListIssueComments(mock.Anything, "safedep", "ghcp", 1).
@@ -138,11 +167,14 @@ func TestGitHubCommentProxyService(t *testing.T) {
 			},
 		},
 		{
-			name:   "update comment fails when when no comment found with tag",
-			config: GitHubCommentProxyServiceConfig{},
+			name: "update comment fails when when no comment found with tag",
+			config: GitHubCommentProxyServiceConfig{
+				GitHubTokenAudienceName: GitHubTokenAudienceName,
+			},
 			token: &gh.GitHubTokenContext{
 				Repository:      "safedep/ghcp",
 				RepositoryOwner: "safedep",
+				Audience:        GitHubTokenAudienceName,
 			},
 			request: &ghcpv1.CreatePullRequestCommentRequest{
 				Owner:    "safedep",
@@ -165,10 +197,12 @@ func TestGitHubCommentProxyService(t *testing.T) {
 			config: GitHubCommentProxyServiceConfig{
 				AllowOnlyOwnCommentUpdates: true,
 				BotUsername:                "safedep-bot",
+				GitHubTokenAudienceName:    GitHubTokenAudienceName,
 			},
 			token: &gh.GitHubTokenContext{
 				Repository:      "safedep/ghcp",
 				RepositoryOwner: "safedep",
+				Audience:        GitHubTokenAudienceName,
 			},
 			mock: func(m *github.MockGitHubIssueAdapter) {
 				m.EXPECT().ListIssueComments(mock.Anything, "safedep", "ghcp", 1).

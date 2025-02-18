@@ -1,0 +1,70 @@
+name: E2E Tests
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  run-e2e-pr:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@6edd4406fa81c3da01a34fa6f6343087c207a568
+        with:
+          go-version: 1.23
+          check-latest: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Build
+        run: make
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Start Server
+        run: |
+          # Run the server in the background
+          ./bin/ghcp server --address 127.0.0.1:8000 --mock-authentication &
+
+          # Wait for the server to start
+          sleep 5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get GitHub Workload Identity Token
+        uses: actions/github-script@v7
+        id: idToken
+        with:
+          script: |
+            const core = require('@actions/core')
+            let id_token = await core.getIDToken('safedep-ghcp')
+            core.setOutput('id_token', id_token)
+
+      - name: Execute E2E Tests
+        run: |
+          # Run buf curl based tests
+          buf curl -vv --protocol grpc --http2-prior-knowledge \
+            --header "Authorization: Bearer $GITHUB_ID_TOKEN" \
+            --schema buf.build/safedep/api \
+            http://localhost:8000/safedep.services.ghcp.v1.GitHubCommentsProxyService/CreatePullRequestComment \
+            -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "$PR_NUMBER", "body": "**E2E Test** Tag: 1234567890"}' 
+        env:
+          GITHUB_ID_TOKEN: ${{ steps.idToken.outputs.id_token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+
+      - name: Stop Server
+        run: |
+          # Stop the server
+          pkill -f "ghcp server"

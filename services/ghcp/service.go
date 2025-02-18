@@ -13,6 +13,11 @@ import (
 	"github.com/safedep/ghcp/services"
 )
 
+const (
+	GitHubTokenAudienceName = "safedep-ghcp"
+	BotUsername             = "safedep-bot"
+)
+
 type GitHubCommentProxyServiceConfig struct {
 	// If true, the service will only comment on public repositories.
 	AllowOnlyPublicRepositories bool
@@ -24,6 +29,9 @@ type GitHubCommentProxyServiceConfig struct {
 	// The username of the bot user configured to comment on the repository.
 	// This is usually the username associated with the GITHUB_TOKEN
 	BotUsername string
+
+	// Audience name to verify against the GitHub Workload Identity Token
+	GitHubTokenAudienceName string
 }
 
 // Secure defaults for the GitHubCommentProxyServiceConfig
@@ -31,7 +39,8 @@ func DefaultGitHubCommentProxyServiceConfig() GitHubCommentProxyServiceConfig {
 	return GitHubCommentProxyServiceConfig{
 		AllowOnlyPublicRepositories: true,
 		AllowOnlyOwnCommentUpdates:  true,
-		BotUsername:                 "safedep-bot",
+		BotUsername:                 BotUsername,
+		GitHubTokenAudienceName:     GitHubTokenAudienceName,
 	}
 }
 
@@ -141,6 +150,9 @@ func (s *gitHubCommentProxyService) updateExistingComment(ctx context.Context, p
 // This is to prevent the service from being misused to spam comments to various repositories
 func (s *gitHubCommentProxyService) verifyRepositoryAccess(tokenContext gh.GitHubTokenContext,
 	req *ghcpv1.CreatePullRequestCommentRequest) error {
+	if !strings.EqualFold(tokenContext.Audience, s.config.GitHubTokenAudienceName) {
+		return fmt.Errorf("audience mismatch: %s != %s", tokenContext.Audience, s.config.GitHubTokenAudienceName)
+	}
 
 	if !strings.EqualFold(tokenContext.RepositoryOwner, req.GetOwner()) {
 		return fmt.Errorf("repository owner mismatch: %s != %s", tokenContext.RepositoryOwner, req.GetOwner())
