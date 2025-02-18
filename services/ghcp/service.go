@@ -149,6 +149,7 @@ func (s *gitHubCommentProxyService) Execute(ctx context.Context,
 	}()
 
 	if err != nil {
+		log.Errorf("failed to execute service: %s", err)
 		failedServiceExecutionMetric.Inc()
 		return nil, err
 	}
