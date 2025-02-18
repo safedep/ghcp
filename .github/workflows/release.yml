@@ -13,7 +13,7 @@ on:
 
 env:
   GCP_REGISTRY: us-central1-docker.pkg.dev
-  GCP_REGISTRY_SA: sd-builds-ga-ghcp-service
+  GCP_REGISTRY_SA: sd-builds-ga-ghcp
   GCP_REGISTRY_IMAGE_NAME: sd-builds-ghcp/ghcp-service
 
 jobs:
