@@ -9,6 +9,7 @@ require (
 	buf.build/gen/go/safedep/api/protocolbuffers/go v1.36.5-20250217171939-44339fbefd05.1
 	connectrpc.com/connect v1.18.1
 	github.com/bufbuild/protovalidate-go v0.9.2
+	github.com/coreos/go-oidc/v3 v3.12.0
 	github.com/google/go-github/v69 v69.2.0
 	github.com/safedep/dry v0.0.0-20250212053807-ffeb61e2cb48
 	github.com/spf13/cobra v1.9.1
@@ -26,6 +27,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
+	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
@@ -67,6 +69,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.29.0 // indirect
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8 // indirect
+	golang.org/x/oauth2 v0.24.0 // indirect
 	golang.org/x/sys v0.27.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/time v0.8.0 // indirect

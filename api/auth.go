@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"connectrpc.com/connect"
+	"github.com/coreos/go-oidc/v3/oidc"
+	"github.com/golang-jwt/jwt"
+	"github.com/safedep/ghcp/pkg/gh"
 )
 
 type AuthenticationInterceptorConfig struct {
@@ -13,13 +17,19 @@ type AuthenticationInterceptorConfig struct {
 }
 
 type authenticationInterceptor struct {
-	config AuthenticationInterceptorConfig
+	config   AuthenticationInterceptorConfig
+	provider *oidc.Provider
 }
 
 // AuthInterceptor is a Connect interceptor that authenticates requests
 // using GitHub Workload Identity Token.
 func NewAuthenticationInterceptor(config AuthenticationInterceptorConfig) (connect.Interceptor, error) {
-	return &authenticationInterceptor{config: config}, nil
+	provider, err := oidc.NewProvider(context.Background(), "https://token.actions.githubusercontent.com")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OIDC provider for GitHub Workload Identity: %w", err)
+	}
+
+	return &authenticationInterceptor{config: config, provider: provider}, nil
 }
 
 func (i *authenticationInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
@@ -33,12 +43,99 @@ func (i *authenticationInterceptor) WrapUnary(next connect.UnaryFunc) connect.Un
 			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unauthenticated"))
 		}
 
-		// Authenticate the OIDC token
-		// Extract and build token context
-		// Inject token context into the context
-		// Call next handler
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			authHeader = strings.TrimPrefix(authHeader, "Bearer ")
+		}
 
-		return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unauthenticated"))
+		// Authenticate the OIDC token
+		verifier := i.provider.Verifier(&oidc.Config{SkipClientIDCheck: true})
+		_, err := verifier.Verify(ctx, authHeader)
+		if err != nil {
+			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("token verification failed"))
+		}
+
+		// We need to re-parse the token to get the GitHub specific claims
+		claims := jwt.MapClaims{}
+		_, err = jwt.ParseWithClaims(authHeader, claims, func(token *jwt.Token) (interface{}, error) {
+			// We don't need to validate the token, we just need to parse it
+			return nil, nil
+		})
+		if err != nil {
+			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("token parsing failed"))
+		}
+
+		// Extract and build token context
+		var tokenContext gh.GitHubTokenContext
+
+		if s, ok := claims["iss"].(string); ok {
+			tokenContext.Issuer = s
+		}
+
+		if s, ok := claims["sub"].(string); ok {
+			tokenContext.Subject = s
+		}
+
+		if s, ok := claims["environment"].(string); ok {
+			tokenContext.Environment = s
+		}
+
+		if s, ok := claims["repository"].(string); ok {
+			tokenContext.Repository = s
+		}
+
+		if s, ok := claims["repository_owner"].(string); ok {
+			tokenContext.RepositoryOwner = s
+		}
+
+		if s, ok := claims["repository_id"].(string); ok {
+			tokenContext.RepositoryID = s
+		}
+
+		if s, ok := claims["repository_owner_id"].(string); ok {
+			tokenContext.RepositoryOwnerID = s
+		}
+
+		if s, ok := claims["repository_visibility"].(string); ok {
+			tokenContext.RepositoryVisibility = s
+		}
+
+		if s, ok := claims["ref"].(string); ok {
+			tokenContext.Ref = s
+		}
+
+		if s, ok := claims["run_id"].(string); ok {
+			tokenContext.RunID = s
+		}
+
+		if s, ok := claims["run_number"].(string); ok {
+			tokenContext.RunNumber = s
+		}
+
+		if s, ok := claims["run_attempt"].(string); ok {
+			tokenContext.RunAttempt = s
+		}
+
+		if s, ok := claims["runner_environment"].(string); ok {
+			tokenContext.RunnerEnvironment = s
+		}
+
+		if s, ok := claims["actor"].(string); ok {
+			tokenContext.Actor = s
+		}
+
+		if s, ok := claims["workflow"].(string); ok {
+			tokenContext.Workflow = s
+		}
+
+		if s, ok := claims["workflow_ref"].(string); ok {
+			tokenContext.WorkflowRef = s
+		}
+
+		// Inject token context into the context
+		ctx = gh.InjectGitHubTokenContext(ctx, tokenContext)
+
+		// Call next handler
+		return next(ctx, req)
 	}
 }
 
