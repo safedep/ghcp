@@ -43,8 +43,9 @@ func (i *authenticationInterceptor) WrapUnary(next connect.UnaryFunc) connect.Un
 			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unauthenticated"))
 		}
 
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			authHeader = strings.TrimPrefix(authHeader, "Bearer ")
+		authHeader = strings.TrimPrefix(authHeader, "Bearer ")
+		if authHeader == "" {
+			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unauthenticated"))
 		}
 
 		// Authenticate the OIDC token
