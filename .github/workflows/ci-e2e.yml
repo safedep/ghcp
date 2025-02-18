@@ -3,12 +3,13 @@ on:
   pull_request:
     branches:
       - main
+      - feat/mvp
 
 permissions:
   contents: read
 
 jobs:
-  run-e2e-pr:
+  run-e2e:
     timeout-minutes: 15
     runs-on: ubuntu-latest
     permissions:
