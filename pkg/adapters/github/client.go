@@ -41,11 +41,11 @@ func DefaultGitHubAdapterConfig() GitHubAdapterConfig {
 	}
 }
 
-//go:generate mockery --name=GitHubAdapter
-type GitHubAdapter interface {
+//go:generate mockery --name=GitHubIssueAdapter
+type GitHubIssueAdapter interface {
 	ListIssueComments(ctx context.Context, owner, repo string, number int) ([]*github.IssueComment, error)
-	CreateIssueComment(ctx context.Context, owner, repo string, number int, comment string) error
-	UpdateIssueComment(ctx context.Context, owner, repo string, commentId int, comment string) error
+	CreateIssueComment(ctx context.Context, owner, repo string, number int, comment string) (*github.IssueComment, error)
+	UpdateIssueComment(ctx context.Context, owner, repo string, commentId int, comment string) (*github.IssueComment, error)
 }
 
 type githubClient struct {
@@ -53,7 +53,7 @@ type githubClient struct {
 	config GitHubAdapterConfig
 }
 
-var _ GitHubAdapter = &githubClient{}
+var _ GitHubIssueAdapter = &githubClient{}
 
 type basicAuthTransportWrapper struct {
 	Transport http.RoundTripper
@@ -104,12 +104,12 @@ func (g *githubClient) ListIssueComments(ctx context.Context, owner, repo string
 	return comments, err
 }
 
-func (g *githubClient) CreateIssueComment(ctx context.Context, owner, repo string, number int, comment string) error {
-	_, _, err := g.client.Issues.CreateComment(ctx, owner, repo, number, &github.IssueComment{Body: &comment})
-	return err
+func (g *githubClient) CreateIssueComment(ctx context.Context, owner, repo string, number int, comment string) (*github.IssueComment, error) {
+	issueComment, _, err := g.client.Issues.CreateComment(ctx, owner, repo, number, &github.IssueComment{Body: &comment})
+	return issueComment, err
 }
 
-func (g *githubClient) UpdateIssueComment(ctx context.Context, owner, repo string, commentId int, comment string) error {
-	_, _, err := g.client.Issues.EditComment(ctx, owner, repo, int64(commentId), &github.IssueComment{Body: &comment})
-	return err
+func (g *githubClient) UpdateIssueComment(ctx context.Context, owner, repo string, commentId int, comment string) (*github.IssueComment, error) {
+	issueComment, _, err := g.client.Issues.EditComment(ctx, owner, repo, int64(commentId), &github.IssueComment{Body: &comment})
+	return issueComment, err
 }
