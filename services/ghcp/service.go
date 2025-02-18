@@ -3,11 +3,13 @@ package ghcp
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
 	ghcpv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/services/ghcp/v1"
 	"github.com/safedep/dry/log"
+	"github.com/safedep/dry/obs"
 	"github.com/safedep/ghcp/pkg/adapters/github"
 	"github.com/safedep/ghcp/pkg/gh"
 	"github.com/safedep/ghcp/services"
@@ -17,6 +19,23 @@ const (
 	GitHubTokenAudienceName = "safedep-ghcp"
 	BotUsername             = "safedep-bot"
 )
+
+var (
+	createCommentMetric              = obs.NewCounter("ghcp_create_comment_total", "Total number of comments created")
+	updateCommentMetric              = obs.NewCounter("ghcp_update_comment_total", "Total number of comments updated")
+	verifyInstallationMetric         = obs.NewCounter("ghcp_verify_installation_total", "Total number of installations verified")
+	verifyRepositoryAccessMetric     = obs.NewCounter("ghcp_verify_repository_access_total", "Total number of repository accesses verified")
+	successfulServiceExecutionMetric = obs.NewCounter("ghcp_successful_service_execution_total", "Total number of successful service executions")
+	failedServiceExecutionMetric     = obs.NewCounter("ghcp_failed_service_execution_total", "Total number of failed service executions")
+)
+
+// GitHubCommentsProxyInstallationVerifier is a struct that verifies the installation of
+// a given GitHub Action by path and action name. This is required to authenticate a repository
+// when workload identity token is not available
+type GitHubCommentsProxyInstallationVerifier struct {
+	Path   string
+	Action *regexp.Regexp
+}
 
 type GitHubCommentProxyServiceConfig struct {
 	// If true, the service will only comment on public repositories.
@@ -32,6 +51,12 @@ type GitHubCommentProxyServiceConfig struct {
 
 	// Audience name to verify against the GitHub Workload Identity Token
 	GitHubTokenAudienceName string
+
+	// Skip Workload Identity Token verification
+	SkipWorkloadIdentityTokenVerification bool
+
+	// Verify vet installation
+	InstallationVerifiers []GitHubCommentsProxyInstallationVerifier
 }
 
 // Secure defaults for the GitHubCommentProxyServiceConfig
@@ -41,25 +66,47 @@ func DefaultGitHubCommentProxyServiceConfig() GitHubCommentProxyServiceConfig {
 		AllowOnlyOwnCommentUpdates:  true,
 		BotUsername:                 BotUsername,
 		GitHubTokenAudienceName:     GitHubTokenAudienceName,
+		InstallationVerifiers: []GitHubCommentsProxyInstallationVerifier{
+			{
+				Path:   "/.github/workflows/vet.yml",
+				Action: regexp.MustCompile(`uses:\s+safedep/vet-action`),
+			},
+			{
+				Path:   "/.github/workflows/vet-ci.yml",
+				Action: regexp.MustCompile(`uses:\s+safedep/vet-action`),
+			},
+		},
 	}
 }
 
 type gitHubCommentProxyService struct {
 	config         GitHubCommentProxyServiceConfig
 	ghIssueAdapter github.GitHubIssueAdapter
+	ghRepoAdapter  github.GitHubRepositoryAdapter
 }
 
 var _ services.Service[*ghcpv1.CreatePullRequestCommentRequest,
 	*ghcpv1.CreatePullRequestCommentResponse] = &gitHubCommentProxyService{}
 
 func NewGitHubCommentProxyService(config GitHubCommentProxyServiceConfig,
-	ghIssueAdapter github.GitHubIssueAdapter) (*gitHubCommentProxyService, error) {
+	ghIssueAdapter github.GitHubIssueAdapter,
+	ghRepoAdapter github.GitHubRepositoryAdapter) (*gitHubCommentProxyService, error) {
+
+	// Must use either installation verifiers or skip workload identity token verification
+	// to avoid misuse of the service for spamming comments
+	if config.SkipWorkloadIdentityTokenVerification && len(config.InstallationVerifiers) == 0 {
+		return nil, fmt.Errorf("skip workload identity token verification is true but no installation verifiers are provided")
+	}
 
 	if config.AllowOnlyOwnCommentUpdates && config.BotUsername == "" {
 		return nil, fmt.Errorf("bot username is required when AllowOnlyOwnCommentUpdates is true")
 	}
 
-	return &gitHubCommentProxyService{config: config, ghIssueAdapter: ghIssueAdapter}, nil
+	return &gitHubCommentProxyService{
+		config:         config,
+		ghIssueAdapter: ghIssueAdapter,
+		ghRepoAdapter:  ghRepoAdapter,
+	}, nil
 }
 
 func (s *gitHubCommentProxyService) Name() string {
@@ -73,31 +120,49 @@ func (s *gitHubCommentProxyService) Config() services.ServiceConfiguration {
 func (s *gitHubCommentProxyService) Execute(ctx context.Context,
 	request *ghcpv1.CreatePullRequestCommentRequest) (*ghcpv1.CreatePullRequestCommentResponse, error) {
 
-	tokenContext, err := gh.ExtractGitHubTokenContext(ctx)
+	r, err := func() (*ghcpv1.CreatePullRequestCommentResponse, error) {
+		if !s.config.SkipWorkloadIdentityTokenVerification {
+			tokenContext, err := gh.ExtractGitHubTokenContext(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to extract GitHub Workload Identity Token context: %w", err)
+			}
+
+			if err := s.verifyRepositoryAccess(tokenContext, request); err != nil {
+				return nil, fmt.Errorf("failed to verify repository access: %w", err)
+			}
+		} else {
+			if err := s.verifyInstallation(ctx, request.GetOwner(), request.GetRepo()); err != nil {
+				return nil, fmt.Errorf("failed to verify installation: %w", err)
+			}
+		}
+
+		prNumber, err := strconv.Atoi(request.GetPrNumber())
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert pr number to int: %w", err)
+		}
+
+		if request.GetTag() == "" {
+			return s.createNewComment(ctx, prNumber, request)
+		}
+
+		return s.updateExistingComment(ctx, prNumber, request)
+	}()
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract GitHub Workload Identity Token context: %w", err)
+		failedServiceExecutionMetric.Inc()
+		return nil, err
 	}
 
-	if err := s.verifyRepositoryAccess(tokenContext, request); err != nil {
-		return nil, fmt.Errorf("failed to verify repository access: %w", err)
-	}
-
-	prNumber, err := strconv.Atoi(request.GetPrNumber())
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert pr number to int: %w", err)
-	}
-
-	if request.GetTag() == "" {
-		return s.createNewComment(ctx, prNumber, request)
-	}
-
-	return s.updateExistingComment(ctx, prNumber, request)
+	successfulServiceExecutionMetric.Inc()
+	return r, nil
 }
 
 func (s *gitHubCommentProxyService) createNewComment(ctx context.Context, prNumber int,
 	request *ghcpv1.CreatePullRequestCommentRequest) (*ghcpv1.CreatePullRequestCommentResponse, error) {
 
+	createCommentMetric.Inc()
 	log.Debugf("Creating comment on PR: %s", request.GetPrNumber())
+
 	comment, err := s.ghIssueAdapter.CreateIssueComment(ctx, request.GetOwner(),
 		request.GetRepo(), prNumber, request.GetBody())
 	if err != nil {
@@ -112,6 +177,7 @@ func (s *gitHubCommentProxyService) createNewComment(ctx context.Context, prNumb
 func (s *gitHubCommentProxyService) updateExistingComment(ctx context.Context, prNumber int,
 	request *ghcpv1.CreatePullRequestCommentRequest) (*ghcpv1.CreatePullRequestCommentResponse, error) {
 
+	updateCommentMetric.Inc()
 	log.Debugf("Updating comment on PR: %s with Tag: %s", request.GetPrNumber(), request.GetTag())
 
 	comments, err := s.ghIssueAdapter.ListIssueComments(ctx, request.GetOwner(),
@@ -150,6 +216,8 @@ func (s *gitHubCommentProxyService) updateExistingComment(ctx context.Context, p
 // This is to prevent the service from being misused to spam comments to various repositories
 func (s *gitHubCommentProxyService) verifyRepositoryAccess(tokenContext gh.GitHubTokenContext,
 	req *ghcpv1.CreatePullRequestCommentRequest) error {
+	verifyRepositoryAccessMetric.Inc()
+
 	if !strings.EqualFold(tokenContext.Audience, s.config.GitHubTokenAudienceName) {
 		return fmt.Errorf("audience mismatch: %s != %s", tokenContext.Audience, s.config.GitHubTokenAudienceName)
 	}
@@ -168,4 +236,21 @@ func (s *gitHubCommentProxyService) verifyRepositoryAccess(tokenContext gh.GitHu
 	}
 
 	return nil
+}
+
+func (s *gitHubCommentProxyService) verifyInstallation(ctx context.Context, owner, repo string) error {
+	verifyInstallationMetric.Inc()
+
+	for _, verifier := range s.config.InstallationVerifiers {
+		content, err := s.ghRepoAdapter.GetFileContent(ctx, owner, repo, verifier.Path)
+		if err != nil {
+			return fmt.Errorf("failed to get file content: %w", err)
+		}
+
+		if verifier.Action.Match(content) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("no installation verifier matched")
 }

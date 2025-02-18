@@ -53,12 +53,13 @@ func startServer() error {
 		return fmt.Errorf("failed to create echo router: %w", err)
 	}
 
-	githubIssueAdapter, err := github.NewGitHubAdapter(github.DefaultGitHubAdapterConfig())
+	githubAdapter, err := github.NewGitHubAdapter(github.DefaultGitHubAdapterConfig())
 	if err != nil {
 		return fmt.Errorf("failed to create github issue adapter: %w", err)
 	}
 
-	ghcpService, err := ghcp.NewGitHubCommentProxyService(ghcp.DefaultGitHubCommentProxyServiceConfig(), githubIssueAdapter)
+	ghcpService, err := ghcp.NewGitHubCommentProxyService(ghcp.DefaultGitHubCommentProxyServiceConfig(),
+		githubAdapter, githubAdapter)
 	if err != nil {
 		return fmt.Errorf("failed to create ghcp service: %w", err)
 	}

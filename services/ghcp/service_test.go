@@ -2,6 +2,8 @@ package ghcp
 
 import (
 	"context"
+	"fmt"
+	"regexp"
 	"testing"
 
 	ghcpv1 "buf.build/gen/go/safedep/api/protocolbuffers/go/safedep/services/ghcp/v1"
@@ -15,12 +17,13 @@ import (
 
 func TestGitHubCommentProxyService(t *testing.T) {
 	cases := []struct {
-		name    string
-		config  GitHubCommentProxyServiceConfig
-		token   *gh.GitHubTokenContext
-		mock    func(*github.MockGitHubIssueAdapter)
-		request *ghcpv1.CreatePullRequestCommentRequest
-		assert  func(*testing.T, error, *ghcpv1.CreatePullRequestCommentResponse)
+		name             string
+		config           GitHubCommentProxyServiceConfig
+		token            *gh.GitHubTokenContext
+		serviceInitError error
+		mock             func(*github.MockGitHubIssueAdapter, *github.MockGitHubRepositoryAdapter)
+		request          *ghcpv1.CreatePullRequestCommentRequest
+		assert           func(*testing.T, error, *ghcpv1.CreatePullRequestCommentResponse)
 	}{
 		{
 			name: "create new comment",
@@ -32,7 +35,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				RepositoryOwner: "safedep",
 				Audience:        GitHubTokenAudienceName,
 			},
-			mock: func(m *github.MockGitHubIssueAdapter) {
+			mock: func(m *github.MockGitHubIssueAdapter, m2 *github.MockGitHubRepositoryAdapter) {
 				m.EXPECT().CreateIssueComment(mock.Anything, "safedep", "ghcp", 1,
 					"test comment").Return(&ghapi.IssueComment{ID: proto.Int64(1)}, nil)
 			},
@@ -146,7 +149,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				RepositoryOwner: "safedep",
 				Audience:        GitHubTokenAudienceName,
 			},
-			mock: func(m *github.MockGitHubIssueAdapter) {
+			mock: func(m *github.MockGitHubIssueAdapter, m2 *github.MockGitHubRepositoryAdapter) {
 				m.EXPECT().ListIssueComments(mock.Anything, "safedep", "ghcp", 1).
 					Return([]*ghapi.IssueComment{
 						{ID: proto.Int64(1), Body: proto.String("test comment with tag: test-tag")},
@@ -183,7 +186,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				Body:     "test comment",
 				Tag:      "test-tag",
 			},
-			mock: func(m *github.MockGitHubIssueAdapter) {
+			mock: func(m *github.MockGitHubIssueAdapter, m2 *github.MockGitHubRepositoryAdapter) {
 				m.EXPECT().ListIssueComments(mock.Anything, "safedep", "ghcp", 1).
 					Return([]*ghapi.IssueComment{}, nil)
 			},
@@ -204,7 +207,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				RepositoryOwner: "safedep",
 				Audience:        GitHubTokenAudienceName,
 			},
-			mock: func(m *github.MockGitHubIssueAdapter) {
+			mock: func(m *github.MockGitHubIssueAdapter, m2 *github.MockGitHubRepositoryAdapter) {
 				m.EXPECT().ListIssueComments(mock.Anything, "safedep", "ghcp", 1).
 					Return([]*ghapi.IssueComment{
 						{
@@ -229,12 +232,66 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				assert.Nil(t, res)
 			},
 		},
+		{
+			name:             "create comment fails when both installation verifiers and workload identity token verification are skipped",
+			serviceInitError: fmt.Errorf("skip workload identity token verification is true but no installation verifiers are provided"),
+			config: GitHubCommentProxyServiceConfig{
+				SkipWorkloadIdentityTokenVerification: true,
+			},
+			request: &ghcpv1.CreatePullRequestCommentRequest{
+				Owner:    "safedep",
+				Repo:     "ghcp",
+				PrNumber: "1",
+				Body:     "test comment",
+			},
+			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
+				assert.Error(t, err)
+				assert.Nil(t, res)
+			},
+		},
+		{
+			name: "create comment is successful when workload identity token verification is skipped and installation verifiers are provided",
+			config: GitHubCommentProxyServiceConfig{
+				SkipWorkloadIdentityTokenVerification: true,
+				InstallationVerifiers: []GitHubCommentsProxyInstallationVerifier{
+					{
+						Path:   "/.github/workflows/test-path",
+						Action: regexp.MustCompile("test-content"),
+					},
+				},
+			},
+			request: &ghcpv1.CreatePullRequestCommentRequest{
+				Owner:    "safedep",
+				Repo:     "ghcp",
+				PrNumber: "1",
+				Body:     "test comment",
+			},
+			mock: func(m *github.MockGitHubIssueAdapter, m2 *github.MockGitHubRepositoryAdapter) {
+				m2.EXPECT().GetFileContent(mock.Anything, "safedep", "ghcp", "/.github/workflows/test-path").
+					Return([]byte("test-content"), nil)
+				m.EXPECT().CreateIssueComment(mock.Anything, "safedep", "ghcp", 1,
+					"test comment").Return(&ghapi.IssueComment{ID: proto.Int64(1)}, nil)
+			},
+			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
+				assert.NoError(t, err)
+				assert.NotEmpty(t, res.GetCommentId())
+			},
+		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			ghIssueAdapter := github.NewMockGitHubIssueAdapter(t)
-			service, err := NewGitHubCommentProxyService(c.config, ghIssueAdapter)
+			ghRepoAdapter := github.NewMockGitHubRepositoryAdapter(t)
+
+			service, err := NewGitHubCommentProxyService(c.config, ghIssueAdapter, ghRepoAdapter)
+			if c.serviceInitError != nil {
+				assert.Error(t, err)
+				assert.Nil(t, service)
+				assert.Contains(t, err.Error(), c.serviceInitError.Error())
+				return
+			}
+
 			assert.NoError(t, err)
 
 			ctx := context.Background()
@@ -243,7 +300,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 			}
 
 			if c.mock != nil {
-				c.mock(ghIssueAdapter)
+				c.mock(ghIssueAdapter, ghRepoAdapter)
 			}
 
 			response, err := service.Execute(ctx, c.request)

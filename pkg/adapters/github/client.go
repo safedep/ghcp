@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 
@@ -46,6 +47,11 @@ type GitHubIssueAdapter interface {
 	ListIssueComments(ctx context.Context, owner, repo string, number int) ([]*github.IssueComment, error)
 	CreateIssueComment(ctx context.Context, owner, repo string, number int, comment string) (*github.IssueComment, error)
 	UpdateIssueComment(ctx context.Context, owner, repo string, commentId int, comment string) (*github.IssueComment, error)
+}
+
+//go:generate mockery --name=GitHubRepositoryAdapter
+type GitHubRepositoryAdapter interface {
+	GetFileContent(ctx context.Context, owner, repo, path string) ([]byte, error)
 }
 
 type githubClient struct {
@@ -112,4 +118,18 @@ func (g *githubClient) CreateIssueComment(ctx context.Context, owner, repo strin
 func (g *githubClient) UpdateIssueComment(ctx context.Context, owner, repo string, commentId int, comment string) (*github.IssueComment, error) {
 	issueComment, _, err := g.client.Issues.EditComment(ctx, owner, repo, int64(commentId), &github.IssueComment{Body: &comment})
 	return issueComment, err
+}
+
+func (g *githubClient) GetFileContent(ctx context.Context, owner, repo, path string) ([]byte, error) {
+	content, _, _, err := g.client.Repositories.GetContents(ctx, owner, repo, path, &github.RepositoryContentGetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := content.GetContent()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get content of file %s: %w", path, err)
+	}
+
+	return []byte(data), nil
 }
