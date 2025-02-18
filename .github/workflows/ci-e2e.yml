@@ -48,7 +48,7 @@ jobs:
         id: idToken
         with:
           script: |
-            const core = require('@actions/core')
+            # core is already imported
             let id_token = await core.getIDToken('safedep-ghcp')
             core.setOutput('id_token', id_token)
 
