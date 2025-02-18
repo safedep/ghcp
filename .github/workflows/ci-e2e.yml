@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-      - feat/mvp
 
 permissions:
   contents: read
@@ -16,11 +15,11 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Skip if ID Token is Not Available
+      - name: Must Have GitHub Workload Identity Token
         run: |
           if [ -z "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ] || [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
-            echo "Skipping E2E tests because ID Token is not available"
-            exit 0
+            echo "GitHub Workload Identity Token is not available"
+            exit -1
           fi
 
       - name: Checkout Source
