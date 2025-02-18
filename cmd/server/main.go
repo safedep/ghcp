@@ -9,6 +9,8 @@ import (
 	"github.com/safedep/dry/log"
 	"github.com/safedep/dry/obs"
 	"github.com/safedep/ghcp/api"
+	"github.com/safedep/ghcp/pkg/adapters/github"
+	"github.com/safedep/ghcp/services/ghcp"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -32,7 +34,7 @@ func NewServerCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&serverAddress, "address", "127.0.0.1:8080", "address to listen on")
+	cmd.Flags().StringVar(&serverAddress, "address", "127.0.0.1:8000", "address to listen on")
 	cmd.Flags().BoolVar(&serverMockAuthentication, "mock-authentication", false, "enable mock authentication")
 
 	return cmd
@@ -51,7 +53,17 @@ func startServer() error {
 		return fmt.Errorf("failed to create echo router: %w", err)
 	}
 
-	apiHandler, err := api.NewGhcpServiceHandler()
+	githubIssueAdapter, err := github.NewGitHubAdapter(github.DefaultGitHubAdapterConfig())
+	if err != nil {
+		return fmt.Errorf("failed to create github issue adapter: %w", err)
+	}
+
+	ghcpService, err := ghcp.NewGitHubCommentProxyService(ghcp.DefaultGitHubCommentProxyServiceConfig(), githubIssueAdapter)
+	if err != nil {
+		return fmt.Errorf("failed to create ghcp service: %w", err)
+	}
+
+	apiHandler, err := api.NewGhcpServiceHandler(ghcpService)
 	if err != nil {
 		return fmt.Errorf("failed to create ghcp service handler: %w", err)
 	}
@@ -91,6 +103,13 @@ func buildConnectInterceptors() (connect.HandlerOption, error) {
 	}
 
 	interceptors = append(interceptors, authInterceptor)
+
+	validatorInterceptor, err := api.NewValidatorInterceptor()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create validator interceptor: %w", err)
+	}
+
+	interceptors = append(interceptors, validatorInterceptor)
 
 	return connect.WithInterceptors(interceptors...), nil
 }
