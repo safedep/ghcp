@@ -58,6 +58,40 @@ func TestGitHubCommentProxyService(t *testing.T) {
 			},
 		},
 		{
+			name:   "create comment fails when owner in request does not match token context",
+			config: GitHubCommentProxyServiceConfig{},
+			token: &gh.GitHubTokenContext{
+				Repository:      "safedep/ghcp",
+				RepositoryOwner: "safedep",
+			},
+			request: &ghcpv1.CreatePullRequestCommentRequest{
+				Owner:    "safedep-test",
+				Repo:     "ghcp",
+				PrNumber: "1",
+			},
+			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
+				assert.Error(t, err)
+				assert.Nil(t, res)
+			},
+		},
+		{
+			name:   "create comment fails when repo in request does not match token context",
+			config: GitHubCommentProxyServiceConfig{},
+			token: &gh.GitHubTokenContext{
+				Repository:      "safedep/ghcp-test",
+				RepositoryOwner: "safedep",
+			},
+			request: &ghcpv1.CreatePullRequestCommentRequest{
+				Owner:    "safedep",
+				Repo:     "ghcp",
+				PrNumber: "1",
+			},
+			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
+				assert.Error(t, err)
+				assert.Nil(t, res)
+			},
+		},
+		{
 			name: "create comment fails when repo is is required to be public",
 			config: GitHubCommentProxyServiceConfig{
 				AllowOnlyPublicRepositories: true,
