@@ -43,7 +43,7 @@ jobs:
       - name: Start Server
         run: |
           # Run the server in the background
-          ./bin/ghcp server --address 127.0.0.1:8000 --mock-authentication &
+          ./bin/ghcp server --address 127.0.0.1:8000 &
 
           # Wait for the server to start
           sleep 5
