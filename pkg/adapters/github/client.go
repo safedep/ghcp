@@ -133,3 +133,9 @@ func (g *githubClient) GetFileContent(ctx context.Context, owner, repo, path str
 
 	return []byte(data), nil
 }
+
+// GetTokenUser returns the user information for the token
+func (g *githubClient) GetTokenUser(ctx context.Context, token string) (*github.User, error) {
+	userInfo, _, err := g.client.Users.Get(ctx, "")
+	return userInfo, err
+}

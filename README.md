@@ -16,6 +16,7 @@ There are multiple methods to authenticate a request that we can consider
 
 1. [GitHub Workload Identity](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect)
 2. [GitHub Temporary Token](https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication)
+3. Custom Repository Verification
 
 While [1] seemed like an appropriate solution, unfortunately it is not available when GitHub Actions workflows are executed
 from a forked repository due to security reason. It suffers from the same limitation (or security hardening) as `$GITHUB_TOKEN`.
@@ -33,9 +34,19 @@ users, especially open source maintainers to be able to use `vet` especially wit
 
 ## Hosted API
 
-A publicly accessible version of the API is hosted at `https://ghcp.integrations.safedep.io`.
+A publicly accessible version of the API is hosted at `https://ghcp-integrations.safedep.io`. The API is
+authenticated using any of:
+
+1. GitHub Workload Identity token
+2. GitHub Repository Verification for `/.github/workflows/vet-ci.yml` as per [vet-action](https://github.com/safedep/vet-action)
 
 ### Token Requirements
 
 - GitHub Workload Identity token must be present in `Authorization` header
 - GitHub Workload Identity token must have `audience` set to `safedep-ghcp`
+
+## References
+
+- [vet - Policy Driven vetting of OSS Components](https://github.com/safedep/vet)
+- [vet-action - GitHub Action for vet](https://github.com/safedep/vet-action)
+- [GITHUB_TOKEN permissions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication#permissions-for-the-github_token)
