@@ -55,7 +55,6 @@ jobs:
         id: idToken
         with:
           script: |
-            # core is already imported
             let id_token = await core.getIDToken('safedep-ghcp')
             core.setOutput('id_token', id_token)
 
@@ -69,9 +68,8 @@ jobs:
             -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "$PR_NUMBER", "body": "**E2E Test** Tag: 1234567890"}' 
         env:
           GITHUB_ID_TOKEN: ${{ steps.idToken.outputs.id_token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_NUMBER: "1"
 
       - name: Stop Server
         run: |
-          # Stop the server
           pkill -f "ghcp server"
