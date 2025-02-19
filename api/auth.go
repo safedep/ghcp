@@ -56,11 +56,10 @@ func (i *authenticationInterceptor) WrapUnary(next connect.UnaryFunc) connect.Un
 		}
 
 		// We need to re-parse the token to get the GitHub specific claims
+		// We don't need to validate the token, we just need to parse it
+		parser := &jwt.Parser{}
 		claims := jwt.MapClaims{}
-		_, err = jwt.ParseWithClaims(authHeader, claims, func(token *jwt.Token) (interface{}, error) {
-			// We don't need to validate the token, we just need to parse it
-			return nil, nil
-		})
+		_, _, err = parser.ParseUnverified(authHeader, claims)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("token parsing failed"))
 		}
