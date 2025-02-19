@@ -68,11 +68,11 @@ func DefaultGitHubCommentProxyServiceConfig() GitHubCommentProxyServiceConfig {
 		GitHubTokenAudienceName:     GitHubTokenAudienceName,
 		InstallationVerifiers: []GitHubCommentsProxyInstallationVerifier{
 			{
-				Path:   "/.github/workflows/vet.yml",
+				Path:   ".github/workflows/vet.yml",
 				Action: regexp.MustCompile(`uses:\s+safedep/vet-action`),
 			},
 			{
-				Path:   "/.github/workflows/vet-ci.yml",
+				Path:   ".github/workflows/vet-ci.yml",
 				Action: regexp.MustCompile(`uses:\s+safedep/vet-action`),
 			},
 		},

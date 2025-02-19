@@ -49,7 +49,6 @@ func (i *authenticationInterceptor) WrapUnary(next connect.UnaryFunc) connect.Un
 			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("token is missing"))
 		}
 
-		// Check if authHeader is a JWT token or PAT token
 		var tokenContext gh.GitHubTokenContext
 		var err error
 
@@ -63,10 +62,7 @@ func (i *authenticationInterceptor) WrapUnary(next connect.UnaryFunc) connect.Un
 			return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("failed to authenticate: %w", err))
 		}
 
-		// Inject token context into the context
 		ctx = gh.InjectGitHubTokenContext(ctx, tokenContext)
-
-		// Call next handler
 		return next(ctx, req)
 	}
 }
