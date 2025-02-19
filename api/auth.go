@@ -68,6 +68,7 @@ func (i *authenticationInterceptor) WrapUnary(next connect.UnaryFunc) connect.Un
 }
 
 func (i *authenticationInterceptor) isPAT(token string) bool {
+	// https://github.blog/changelog/2021-03-31-authentication-token-format-updates-are-generally-available/
 	var validPatPrefixes = []string{
 		"ghp_",
 		"gho_",
