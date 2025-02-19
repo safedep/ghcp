@@ -245,7 +245,8 @@ func (s *gitHubCommentProxyService) verifyInstallation(ctx context.Context, owne
 	for _, verifier := range s.config.InstallationVerifiers {
 		content, err := s.ghRepoAdapter.GetFileContent(ctx, owner, repo, verifier.Path)
 		if err != nil {
-			return fmt.Errorf("failed to get file content: %w", err)
+			log.Debugf("verifyInstallation: %s/%s: failed to get file content: %s", owner, repo, err)
+			continue
 		}
 
 		if verifier.Action.Match(content) {

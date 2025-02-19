@@ -41,12 +41,12 @@ func (i *authenticationInterceptor) WrapUnary(next connect.UnaryFunc) connect.Un
 
 		authHeader := req.Header().Get("authorization")
 		if authHeader == "" {
-			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unauthenticated"))
+			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("token is required"))
 		}
 
 		authHeader = strings.TrimPrefix(authHeader, "Bearer ")
 		if authHeader == "" {
-			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("unauthenticated"))
+			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("token is missing"))
 		}
 
 		// Check if authHeader is a JWT token or PAT token
