@@ -61,7 +61,7 @@ func (i *authenticationInterceptor) WrapUnary(next connect.UnaryFunc) connect.Un
 		claims := jwt.MapClaims{}
 		_, _, err = parser.ParseUnverified(authHeader, claims)
 		if err != nil {
-			return nil, connect.NewError(connect.CodeUnauthenticated, errors.New("token parsing failed"))
+			return nil, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("token parsing failed: %w", err))
 		}
 
 		// Extract and build token context
