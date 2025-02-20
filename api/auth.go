@@ -97,27 +97,41 @@ func (i *authenticationInterceptor) authenticateUsingPAT(ctx context.Context, to
 		return gh.GitHubTokenContext{}, fmt.Errorf("failed to create GitHub adapter: %w", err)
 	}
 
-	userInfo, err := adapter.GetTokenUser(ctx, token)
-	if err != nil {
-		return gh.GitHubTokenContext{}, fmt.Errorf("failed to get token user: %w", err)
-	}
+	tokenContext := gh.GitHubTokenContext{}
 
-	log.Debugf("Token user: %+v", userInfo)
+	// Try to get the user info to check if the token is a PAT
+	if userInfo, err := adapter.GetTokenUser(ctx, token); err == nil {
+		// This is weird case, but it can happen if the token is a PAT
+		if userInfo.GetType() != "User" {
+			return gh.GitHubTokenContext{}, fmt.Errorf("token is not a user token expected a user token")
+		}
 
-	var tokenContext gh.GitHubTokenContext
-
-	if userInfo.GetLogin() != "" {
 		tokenContext.Actor = userInfo.GetLogin()
+		tokenContext.TokenType = gh.TokenTypeUser
+
+		log.Debugf("Token user: %+v", userInfo)
+		log.Debugf("Token context: %+v", tokenContext)
+
+		return tokenContext, nil
 	}
 
-	log.Debugf("Token context: %+v", tokenContext)
+	// Fallback to just validating the token by making a request to the GitHub API
+	_, err = adapter.GetRateLimits(ctx)
+	if err != nil {
+		return gh.GitHubTokenContext{}, fmt.Errorf("failed to validate token: %w", err)
+	}
 
+	// We can't really do meaningful authorization with a GHA token without
+	// having access to the request. So we just create a token and mark it as
+	// action token for the service to do its own authorization.
+
+	tokenContext.TokenType = gh.TokenTypeAction
 	return tokenContext, nil
 }
 
 // authenticateUsingJWT authenticates the OIDC token and returns the internal GitHub token context
 func (i *authenticationInterceptor) authenticateUsingJWT(ctx context.Context, authHeader string) (gh.GitHubTokenContext, error) {
-	log.Debugf("Authenticating using JWT")
+	log.Debugf("Authenticating using Workload Identity Token (JWT)")
 
 	var tokenContext gh.GitHubTokenContext
 
@@ -205,6 +219,7 @@ func (i *authenticationInterceptor) authenticateUsingJWT(ctx context.Context, au
 
 	log.Debugf("Token context: %+v", tokenContext)
 
+	tokenContext.TokenType = gh.TokenTypeWorkloadIdentity
 	return tokenContext, nil
 }
 

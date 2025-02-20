@@ -17,9 +17,9 @@ import (
 )
 
 var (
-	serverAddress                               string
-	serverMockAuthentication                    bool
-	serverSkipWorkloadIdentityTokenVerification bool
+	serverAddress            string
+	serverMockAuthentication bool
+	serverMockAuthorization  bool
 )
 
 func NewServerCommand() *cobra.Command {
@@ -37,9 +37,7 @@ func NewServerCommand() *cobra.Command {
 
 	cmd.Flags().StringVar(&serverAddress, "address", "127.0.0.1:8000", "address to listen on")
 	cmd.Flags().BoolVar(&serverMockAuthentication, "mock-authentication", false, "enable mock authentication")
-	cmd.Flags().BoolVar(&serverSkipWorkloadIdentityTokenVerification,
-		"skip-workload-identity-token-verification", false, "skip workload identity token verification")
-
+	cmd.Flags().BoolVar(&serverMockAuthorization, "mock-authorization", false, "enable mock authorization")
 	return cmd
 }
 
@@ -62,7 +60,7 @@ func startServer() error {
 	}
 
 	ghcpServiceConfig := ghcp.DefaultGitHubCommentProxyServiceConfig()
-	ghcpServiceConfig.SkipWorkloadIdentityTokenVerification = serverSkipWorkloadIdentityTokenVerification
+	ghcpServiceConfig.InsecureSkipAuthorization = serverMockAuthorization
 
 	ghcpService, err := ghcp.NewGitHubCommentProxyService(ghcpServiceConfig,
 		githubAdapter, githubAdapter)

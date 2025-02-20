@@ -52,11 +52,14 @@ type GitHubCommentProxyServiceConfig struct {
 	// Audience name to verify against the GitHub Workload Identity Token
 	GitHubTokenAudienceName string
 
-	// Skip Workload Identity Token verification
-	SkipWorkloadIdentityTokenVerification bool
+	// Verify installation by checking the existence of a file
+	VerifyInstallation bool
 
 	// Verify vet installation
 	InstallationVerifiers []GitHubCommentsProxyInstallationVerifier
+
+	// InsecureSkipAuthorization is used to skip authorization checks for testing purposes
+	InsecureSkipAuthorization bool
 }
 
 // Secure defaults for the GitHubCommentProxyServiceConfig
@@ -92,12 +95,6 @@ func NewGitHubCommentProxyService(config GitHubCommentProxyServiceConfig,
 	ghIssueAdapter github.GitHubIssueAdapter,
 	ghRepoAdapter github.GitHubRepositoryAdapter) (*gitHubCommentProxyService, error) {
 
-	// Must use either installation verifiers or skip workload identity token verification
-	// to avoid misuse of the service for spamming comments
-	if config.SkipWorkloadIdentityTokenVerification && len(config.InstallationVerifiers) == 0 {
-		return nil, fmt.Errorf("skip workload identity token verification is true but no installation verifiers are provided")
-	}
-
 	if config.AllowOnlyOwnCommentUpdates && config.BotUsername == "" {
 		return nil, fmt.Errorf("bot username is required when AllowOnlyOwnCommentUpdates is true")
 	}
@@ -121,16 +118,18 @@ func (s *gitHubCommentProxyService) Execute(ctx context.Context,
 	request *ghcpv1.CreatePullRequestCommentRequest) (*ghcpv1.CreatePullRequestCommentResponse, error) {
 
 	r, err := func() (*ghcpv1.CreatePullRequestCommentResponse, error) {
-		if !s.config.SkipWorkloadIdentityTokenVerification {
+		if !s.config.InsecureSkipAuthorization {
 			tokenContext, err := gh.ExtractGitHubTokenContext(ctx)
 			if err != nil {
 				return nil, fmt.Errorf("failed to extract GitHub Workload Identity Token context: %w", err)
 			}
 
-			if err := s.verifyRepositoryAccess(tokenContext, request); err != nil {
+			if err := s.verifyRepositoryAccess(ctx, tokenContext, request); err != nil {
 				return nil, fmt.Errorf("failed to verify repository access: %w", err)
 			}
-		} else {
+		}
+
+		if s.config.VerifyInstallation {
 			if err := s.verifyInstallation(ctx, request.GetOwner(), request.GetRepo()); err != nil {
 				return nil, fmt.Errorf("failed to verify installation: %w", err)
 			}
@@ -215,10 +214,51 @@ func (s *gitHubCommentProxyService) updateExistingComment(ctx context.Context, p
 
 // verifyRepositoryAccess verifies that the token context matches the requested repository
 // This is to prevent the service from being misused to spam comments to various repositories
-func (s *gitHubCommentProxyService) verifyRepositoryAccess(tokenContext gh.GitHubTokenContext,
+func (s *gitHubCommentProxyService) verifyRepositoryAccess(ctx context.Context, tokenContext gh.GitHubTokenContext,
 	req *ghcpv1.CreatePullRequestCommentRequest) error {
 	verifyRepositoryAccessMetric.Inc()
 
+	if tokenContext.IsWorkloadIdentityToken() {
+		return s.verifyWorkloadIdentityToken(tokenContext, req)
+	}
+
+	if tokenContext.IsActionToken() {
+		return s.verifyActionToken(ctx, tokenContext, req)
+	}
+
+	return fmt.Errorf("failed to verify repository access for token context")
+}
+
+func (s *gitHubCommentProxyService) verifyActionToken(ctx context.Context, tokenContext gh.GitHubTokenContext,
+	req *ghcpv1.CreatePullRequestCommentRequest) error {
+	prNumber, err := strconv.Atoi(req.GetPrNumber())
+	if err != nil {
+		return fmt.Errorf("failed to convert pr number to int: %w", err)
+	}
+
+	repo, err := s.ghRepoAdapter.GetRepository(ctx, req.GetOwner(), req.GetRepo())
+	if err != nil {
+		return fmt.Errorf("failed to get repository: %w", err)
+	}
+
+	if s.config.AllowOnlyPublicRepositories && repo.GetVisibility() != "public" {
+		return fmt.Errorf("repository is not public")
+	}
+
+	pr, err := s.ghRepoAdapter.GetPullRequest(ctx, req.GetOwner(), req.GetRepo(), prNumber)
+	if err != nil {
+		return fmt.Errorf("failed to get pull request: %w", err)
+	}
+
+	if pr.GetState() != "open" {
+		return fmt.Errorf("pull request is not open")
+	}
+
+	return nil
+}
+
+func (s *gitHubCommentProxyService) verifyWorkloadIdentityToken(tokenContext gh.GitHubTokenContext,
+	req *ghcpv1.CreatePullRequestCommentRequest) error {
 	if !strings.EqualFold(tokenContext.Audience, s.config.GitHubTokenAudienceName) {
 		return fmt.Errorf("audience mismatch: %s != %s", tokenContext.Audience, s.config.GitHubTokenAudienceName)
 	}

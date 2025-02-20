@@ -51,7 +51,9 @@ type GitHubIssueAdapter interface {
 
 //go:generate mockery --name=GitHubRepositoryAdapter
 type GitHubRepositoryAdapter interface {
+	GetRepository(ctx context.Context, owner, repo string) (*github.Repository, error)
 	GetFileContent(ctx context.Context, owner, repo, path string) ([]byte, error)
+	GetPullRequest(ctx context.Context, owner, repo string, number int) (*github.PullRequest, error)
 }
 
 type githubClient struct {
@@ -138,4 +140,20 @@ func (g *githubClient) GetFileContent(ctx context.Context, owner, repo, path str
 func (g *githubClient) GetTokenUser(ctx context.Context, token string) (*github.User, error) {
 	userInfo, _, err := g.client.Users.Get(ctx, "")
 	return userInfo, err
+}
+
+// GetRepository returns the repository information for the given owner and repo
+func (g *githubClient) GetRepository(ctx context.Context, owner, repo string) (*github.Repository, error) {
+	r, _, err := g.client.Repositories.Get(ctx, owner, repo)
+	return r, err
+}
+
+func (g *githubClient) GetPullRequest(ctx context.Context, owner, repo string, number int) (*github.PullRequest, error) {
+	pr, _, err := g.client.PullRequests.Get(ctx, owner, repo, number)
+	return pr, err
+}
+
+func (g *githubClient) GetRateLimits(ctx context.Context) (*github.RateLimits, error) {
+	limits, _, err := g.client.RateLimit.Get(ctx)
+	return limits, err
 }
