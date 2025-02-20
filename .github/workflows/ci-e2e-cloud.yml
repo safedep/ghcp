@@ -1,0 +1,32 @@
+name: E2E Tests Cloud Deployment
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  run-e2e:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v3
+  
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 22
+
+      - name: Install Dependencies
+        working-directory: examples/ghcp-client-ts
+        run: npm install
+
+      - name: Run Cloud Deployment Test
+        working-directory: examples/ghcp-client-ts
+        run: npx tsx index.ts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}

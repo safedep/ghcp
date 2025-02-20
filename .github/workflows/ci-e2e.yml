@@ -47,11 +47,21 @@ jobs:
       - name: Execute E2E Tests
         run: |
           # Run buf curl based tests
-          buf curl -vv --protocol grpc --http2-prior-knowledge \
+          # We expect a failure with error:
+          # POST https://api.github.com/repos/safedep/ghcp/issues/3/comments: 403 Resource not accessible
+          # Run the request and capture output
+          output=$(buf curl -vv --protocol grpc --http2-prior-knowledge \
             --header "Authorization: Bearer $GHCP_AUTH_TOKEN" \
             --schema buf.build/safedep/api \
             http://localhost:8000/safedep.services.ghcp.v1.GitHubCommentsProxyService/CreatePullRequestComment \
-            -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "${{ github.event.pull_request.number }}", "body": "**E2E Test** Tag: 1234567890"}' 
+            -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "${{ github.event.pull_request.number }}", "body": "**E2E Test** Tag: 1234567890"}' 2>&1)
+
+          # Check if output contains expected error message
+          if ! echo "$output" | grep -q "403 Resource not accessible"; then
+            echo "Expected error '403 Resource not accessible' not found in output:"
+            echo "$output"
+            exit 1
+          fi
         env:
           GHCP_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

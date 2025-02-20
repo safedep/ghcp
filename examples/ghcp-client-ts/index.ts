@@ -6,17 +6,38 @@ import { GitHubCommentsProxyService } from "@buf/safedep_api.bufbuild_es/safedep
 
 const apiBaseUrl = "https://ghcp-integrations.safedep.io";
 
-function createGithubCommentsProxyServiceClient() {
-  const transport = createGrpcTransport({ baseUrl: apiBaseUrl });
+function authenticationInterceptor(token: string) {
+  return (next: any) => async (req: any) => {
+    req.header.set("authorization", `Bearer ${token}`);
+    return await next(req);
+  };
+}
+
+function createGithubCommentsProxyServiceClient(token: string) {
+  const transport = createGrpcTransport({
+    baseUrl: apiBaseUrl,
+    interceptors: [authenticationInterceptor(token)],
+  });
+
   return createClient(GitHubCommentsProxyService, transport);
 }
 
 async function main() {
-  const client = createGithubCommentsProxyServiceClient();
+  const githubToken = process.env.GITHUB_TOKEN;
+  if (!githubToken) {
+    throw new Error("GITHUB_TOKEN is not set");
+  }
+
+  const githubPullRequestNumber = process.env.GITHUB_PULL_REQUEST_NUMBER;
+  if (!githubPullRequestNumber) {
+    throw new Error("GITHUB_PULL_REQUEST_NUMBER is not set");
+  }
+
+  const client = createGithubCommentsProxyServiceClient(githubToken);
   const response = await client.createPullRequestComment({
     owner: "safedep",
     repo: "ghcp",
-    prNumber: "1",
+    prNumber: githubPullRequestNumber,
     body: "Hello, world!",
   });
 
