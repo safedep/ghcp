@@ -229,7 +229,7 @@ func (s *gitHubCommentProxyService) verifyRepositoryAccess(ctx context.Context, 
 	return fmt.Errorf("failed to verify repository access for token context")
 }
 
-func (s *gitHubCommentProxyService) verifyActionToken(ctx context.Context, tokenContext gh.GitHubTokenContext,
+func (s *gitHubCommentProxyService) verifyActionToken(ctx context.Context, _ gh.GitHubTokenContext,
 	req *ghcpv1.CreatePullRequestCommentRequest) error {
 	prNumber, err := strconv.Atoi(req.GetPrNumber())
 	if err != nil {
@@ -251,7 +251,7 @@ func (s *gitHubCommentProxyService) verifyActionToken(ctx context.Context, token
 	}
 
 	if pr.GetState() != "open" {
-		return fmt.Errorf("pull request is not open")
+		return fmt.Errorf("pull request is not open: %s", pr.GetState())
 	}
 
 	return nil
