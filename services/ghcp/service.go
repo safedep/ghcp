@@ -60,6 +60,9 @@ type GitHubCommentProxyServiceConfig struct {
 
 	// InsecureSkipAuthorization is used to skip authorization checks for testing purposes
 	InsecureSkipAuthorization bool
+
+	// Max comment in a single PR. This is a guardrail to prevent abuse of the service.
+	MaxCommentsPerPR int
 }
 
 // Secure defaults for the GitHubCommentProxyServiceConfig
@@ -67,6 +70,7 @@ func DefaultGitHubCommentProxyServiceConfig() GitHubCommentProxyServiceConfig {
 	return GitHubCommentProxyServiceConfig{
 		AllowOnlyPublicRepositories: true,
 		AllowOnlyOwnCommentUpdates:  true,
+		MaxCommentsPerPR:            3,
 		BotUsername:                 BotUsername,
 		GitHubTokenAudienceName:     GitHubTokenAudienceName,
 		InstallationVerifiers: []GitHubCommentsProxyInstallationVerifier{
@@ -99,6 +103,14 @@ func NewGitHubCommentProxyService(config GitHubCommentProxyServiceConfig,
 		return nil, fmt.Errorf("bot username is required when AllowOnlyOwnCommentUpdates is true")
 	}
 
+	if config.MaxCommentsPerPR < 0 {
+		return nil, fmt.Errorf("max comments per PR must be greater than 0")
+	}
+
+	if config.MaxCommentsPerPR > 0 && config.BotUsername == "" {
+		return nil, fmt.Errorf("bot username is required when MaxCommentsPerPR is greater than 0")
+	}
+
 	return &gitHubCommentProxyService{
 		config:         config,
 		ghIssueAdapter: ghIssueAdapter,
@@ -116,7 +128,6 @@ func (s *gitHubCommentProxyService) Config() services.ServiceConfiguration {
 
 func (s *gitHubCommentProxyService) Execute(ctx context.Context,
 	request *ghcpv1.CreatePullRequestCommentRequest) (*ghcpv1.CreatePullRequestCommentResponse, error) {
-
 	r, err := func() (*ghcpv1.CreatePullRequestCommentResponse, error) {
 		if !s.config.InsecureSkipAuthorization {
 			tokenContext, err := gh.ExtractGitHubTokenContext(ctx)
@@ -162,6 +173,26 @@ func (s *gitHubCommentProxyService) createNewComment(ctx context.Context, prNumb
 
 	createCommentMetric.Inc()
 	log.Debugf("Creating comment on PR: %s", request.GetPrNumber())
+
+	// If max comments per PR is set, we need to check if we have reached the limit
+	if s.config.MaxCommentsPerPR > 0 {
+		comments, err := s.ghIssueAdapter.ListIssueComments(ctx, request.GetOwner(),
+			request.GetRepo(), prNumber)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list issue comments: %w", err)
+		}
+
+		commentsByBot := 0
+		for _, comment := range comments {
+			if comment.GetUser().GetLogin() == s.config.BotUsername {
+				commentsByBot++
+			}
+		}
+
+		if commentsByBot >= s.config.MaxCommentsPerPR {
+			return nil, fmt.Errorf("maximum number of comments (%d) reached for PR", s.config.MaxCommentsPerPR)
+		}
+	}
 
 	comment, err := s.ghIssueAdapter.CreateIssueComment(ctx, request.GetOwner(),
 		request.GetRepo(), prNumber, request.GetBody())

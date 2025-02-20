@@ -18,6 +18,19 @@ For the request to be successful, the following conditions must be met:
 - `$GITHUB_TOKEN` has access to the requested repository
 - The requested PR is in `open` state
 
+## Hosted API
+
+A publicly accessible version of the API is hosted at `https://ghcp-integrations.safedep.io`. The API is
+authenticated using any of:
+
+1. GitHub Workload Identity token
+2. GitHub Actions Tokens (`$GITHUB_TOKEN`)
+
+### Limits
+
+- Maximum 3 comments per PR
+- Unlimited comment updates using `tag` subject to GitHub API rate limits
+
 ## Background
 
 Proxy Service to allow GitHub Actions safely comment on a PR even when invoked from a forked repository. See 
@@ -54,19 +67,6 @@ We settled for a restricted used of `$GITHUB_TOKEN` with following verification:
 - Verify the requested PR is in `open` state
 
 Only then the service accepts the request and proxies the comment to the target repository.
-
-## Hosted API
-
-A publicly accessible version of the API is hosted at `https://ghcp-integrations.safedep.io`. The API is
-authenticated using any of:
-
-1. GitHub Workload Identity token
-2. GitHub Repository Verification for `/.github/workflows/vet-ci.yml` as per [vet-action](https://github.com/safedep/vet-action)
-
-### Token Requirements
-
-- GitHub Workload Identity token must be present in `Authorization` header
-- GitHub Workload Identity token must have `audience` set to `safedep-ghcp`
 
 ## Security
 
