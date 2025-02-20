@@ -52,10 +52,9 @@ jobs:
             --header "Authorization: Bearer $GHCP_AUTH_TOKEN" \
             --schema buf.build/safedep/api \
             http://localhost:8000/safedep.services.ghcp.v1.GitHubCommentsProxyService/CreatePullRequestComment \
-            -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "$PR_NUMBER", "body": "**E2E Test** Tag: 1234567890"}' 
+            -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "1", "body": "**E2E Test** Tag: 1234567890"}' 
         env:
           GHCP_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: "1"
 
       - name: Show Server Logs
         if: ${{ always() }}
