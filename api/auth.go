@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt"
+	"github.com/safedep/dry/log"
 	"github.com/safedep/ghcp/pkg/adapters/github"
 	"github.com/safedep/ghcp/pkg/gh"
 )
@@ -87,6 +88,8 @@ func (i *authenticationInterceptor) isPAT(token string) bool {
 
 // authenticateUsingPAT authenticates the PAT token and returns the internal GitHub token context
 func (i *authenticationInterceptor) authenticateUsingPAT(ctx context.Context, token string) (gh.GitHubTokenContext, error) {
+	log.Debugf("Authenticating using GITHUB_TOKEN")
+
 	adapter, err := github.NewGitHubAdapter(github.GitHubAdapterConfig{
 		Token: token,
 	})
@@ -99,17 +102,23 @@ func (i *authenticationInterceptor) authenticateUsingPAT(ctx context.Context, to
 		return gh.GitHubTokenContext{}, fmt.Errorf("failed to get token user: %w", err)
 	}
 
+	log.Debugf("Token user: %+v", userInfo)
+
 	var tokenContext gh.GitHubTokenContext
 
 	if userInfo.GetLogin() != "" {
 		tokenContext.Actor = userInfo.GetLogin()
 	}
 
+	log.Debugf("Token context: %+v", tokenContext)
+
 	return tokenContext, nil
 }
 
 // authenticateUsingJWT authenticates the OIDC token and returns the internal GitHub token context
 func (i *authenticationInterceptor) authenticateUsingJWT(ctx context.Context, authHeader string) (gh.GitHubTokenContext, error) {
+	log.Debugf("Authenticating using JWT")
+
 	var tokenContext gh.GitHubTokenContext
 
 	// Authenticate the OIDC token
@@ -127,6 +136,8 @@ func (i *authenticationInterceptor) authenticateUsingJWT(ctx context.Context, au
 	if err != nil {
 		return tokenContext, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("token parsing failed: %w", err))
 	}
+
+	log.Debugf("Token claims: %+v", claims)
 
 	if s, ok := claims["iss"].(string); ok {
 		tokenContext.Issuer = s
@@ -191,6 +202,8 @@ func (i *authenticationInterceptor) authenticateUsingJWT(ctx context.Context, au
 	if s, ok := claims["workflow_ref"].(string); ok {
 		tokenContext.WorkflowRef = s
 	}
+
+	log.Debugf("Token context: %+v", tokenContext)
 
 	return tokenContext, nil
 }
