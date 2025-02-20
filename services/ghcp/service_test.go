@@ -264,6 +264,25 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				assert.NotEmpty(t, res.GetCommentId())
 			},
 		},
+		{
+			name: "create comment fails when user token is provided",
+			config: GitHubCommentProxyServiceConfig{
+				GitHubTokenAudienceName: GitHubTokenAudienceName,
+			},
+			token: &gh.GitHubTokenContext{
+				TokenType: gh.TokenTypeUser,
+			},
+			request: &ghcpv1.CreatePullRequestCommentRequest{
+				Owner:    "safedep",
+				Repo:     "ghcp",
+				PrNumber: "1",
+				Body:     "test comment",
+			},
+			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
+				assert.Error(t, err)
+				assert.Nil(t, res)
+			},
+		},
 	}
 
 	for _, c := range cases {

@@ -116,6 +116,7 @@ func (i *authenticationInterceptor) authenticateUsingPAT(ctx context.Context, to
 	}
 
 	// Fallback to just validating the token by making a request to the GitHub API
+	// This is the case for GITHUB_TOKEN injected by GitHub Actions
 	_, err = adapter.GetRateLimits(ctx)
 	if err != nil {
 		return gh.GitHubTokenContext{}, fmt.Errorf("failed to validate token: %w", err)
