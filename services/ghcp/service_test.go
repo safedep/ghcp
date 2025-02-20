@@ -283,6 +283,71 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				assert.Nil(t, res)
 			},
 		},
+		{
+			name: "create comment fails when max comments per PR is reached",
+			config: GitHubCommentProxyServiceConfig{
+				MaxCommentsPerPR:        2,
+				BotUsername:             "safedep-bot",
+				GitHubTokenAudienceName: GitHubTokenAudienceName,
+			},
+			token: &gh.GitHubTokenContext{
+				Repository:      "safedep/ghcp",
+				RepositoryOwner: "safedep",
+				Audience:        GitHubTokenAudienceName,
+				TokenType:       gh.TokenTypeWorkloadIdentity,
+			},
+			mock: func(m *github.MockGitHubIssueAdapter, m2 *github.MockGitHubRepositoryAdapter) {
+				m.EXPECT().ListIssueComments(mock.Anything, "safedep", "ghcp", 1).
+					Return([]*ghapi.IssueComment{
+						{ID: proto.Int64(1), Body: proto.String("test comment 1"), User: &ghapi.User{Login: proto.String("safedep-bot")}},
+						{ID: proto.Int64(2), Body: proto.String("test comment 2"), User: &ghapi.User{Login: proto.String("safedep-bot")}},
+						{ID: proto.Int64(3), Body: proto.String("test comment 3"), User: &ghapi.User{Login: proto.String("not-safedep-bot")}},
+					}, nil)
+			},
+			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
+				assert.Error(t, err)
+				assert.Nil(t, res)
+			},
+			request: &ghcpv1.CreatePullRequestCommentRequest{
+				Owner:    "safedep",
+				Repo:     "ghcp",
+				PrNumber: "1",
+				Body:     "test comment",
+			},
+		},
+		{
+			name: "create comment is successful when max comments per PR is not met for the bot user",
+			config: GitHubCommentProxyServiceConfig{
+				MaxCommentsPerPR:        2,
+				BotUsername:             "safedep-bot",
+				GitHubTokenAudienceName: GitHubTokenAudienceName,
+			},
+			token: &gh.GitHubTokenContext{
+				Repository:      "safedep/ghcp",
+				RepositoryOwner: "safedep",
+				Audience:        GitHubTokenAudienceName,
+				TokenType:       gh.TokenTypeWorkloadIdentity,
+			},
+			mock: func(m *github.MockGitHubIssueAdapter, m2 *github.MockGitHubRepositoryAdapter) {
+				m.EXPECT().ListIssueComments(mock.Anything, "safedep", "ghcp", 1).
+					Return([]*ghapi.IssueComment{
+						{ID: proto.Int64(1), Body: proto.String("test comment 1"), User: &ghapi.User{Login: proto.String("safedep-bot")}},
+						{ID: proto.Int64(2), Body: proto.String("test comment 2"), User: &ghapi.User{Login: proto.String("not-safedep-bot")}},
+					}, nil)
+				m.EXPECT().CreateIssueComment(mock.Anything, "safedep", "ghcp", 1,
+					"test comment").Return(&ghapi.IssueComment{ID: proto.Int64(3)}, nil)
+			},
+			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
+				assert.NoError(t, err)
+				assert.NotEmpty(t, res.GetCommentId())
+			},
+			request: &ghcpv1.CreatePullRequestCommentRequest{
+				Owner:    "safedep",
+				Repo:     "ghcp",
+				PrNumber: "1",
+				Body:     "test comment",
+			},
+		},
 	}
 
 	for _, c := range cases {
