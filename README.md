@@ -1,5 +1,22 @@
 # GitHub Comments Proxy
-GitHub Comments Proxy Service implementing [API](https://buf.build/safedep/api/docs/main:safedep.services.ghcp.v1)
+GitHub Comments Proxy Service implementing [API](https://buf.build/safedep/api/docs/main:safedep.services.ghcp.v1). This service
+is built to help GitHub Actions developers to comment on a PR even when invoked from a forked repository.
+
+## TL;DR
+
+```bash
+curl -X POST \
+  https://ghcp-integrations.safedep.io/safedep.services.ghcp.v1.GitHubCommentsProxyService/CreatePullRequestComment \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "1", "body": "Hello, world!"}'
+```
+
+For the request to be successful, the following conditions must be met:
+
+- `$GITHUB_TOKEN` is a temporary GitHub Action Token (NOT user PAT)
+- `$GITHUB_TOKEN` has access to the requested repository
+- The requested PR is in `open` state
 
 ## Background
 
@@ -22,15 +39,21 @@ While [1] seemed like an appropriate solution, unfortunately it is not available
 from a forked repository due to security reason. It suffers from the same limitation (or security hardening) as `$GITHUB_TOKEN`.
 
 We can leverage the read-only `$GITHUB_TOKEN` to verify the identity of the caller before authorizing the request. However,
-we avoid exposing a secret, even though short-lived outside an user's GitHub environment.
+we want to avoid exposing a secret, even though short-lived outside an user's GitHub environment.
 
-We settle for a simple verification of:
+Verification of the repository is done by checking for the existence of a pre-existing file path in the repository.
 
 - Pre-existing file path in the repository (e.g. `/.github/workflows/vet-ci.yml`)
 - Regular expression matching the file content
 
-While this approach appears naive, it is practically useful because we want [vet](https://github.com/safedep/vet)
-users, especially open source maintainers to be able to use `vet` especially with PRs from forked repositories.
+However, this approach is vulnerable to spamming all existing users of [vet-action](https://github.com/safedep/vet-action).
+We settled for a restricted used of `$GITHUB_TOKEN` with following verification:
+
+- Verify `$GITHUB_TOKEN` is present in the request and it is a temporary GitHub Action Token (NOT user PAT)
+- Verify `$GITHUB_TOKEN` has access to the requested repository
+- Verify the requested PR is in `open` state
+
+Only then the service accepts the request and proxies the comment to the target repository.
 
 ## Hosted API
 
@@ -44,6 +67,10 @@ authenticated using any of:
 
 - GitHub Workload Identity token must be present in `Authorization` header
 - GitHub Workload Identity token must have `audience` set to `safedep-ghcp`
+
+## Security
+
+Send all security reports to `security@safedep.io`.
 
 ## References
 
