@@ -1,6 +1,6 @@
 name: E2E Tests
 on:
-  push:
+  pull_request:
     branches:
       - main
 
@@ -15,13 +15,6 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Must Have GitHub Workload Identity Token
-        run: |
-          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ] || [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
-            echo "GitHub Workload Identity Token is not available"
-            exit -1
-          fi
-
       - name: Checkout Source
         uses: actions/checkout@v3
 
@@ -43,32 +36,28 @@ jobs:
       - name: Start Server
         run: |
           # Run the server in the background
-          ./bin/ghcp server --address 127.0.0.1:8000 &
+          ./bin/ghcp server --address 127.0.0.1:8000 > /tmp/ghcp-server.log 2>&1 &
 
           # Wait for the server to start
           sleep 5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get GitHub Workload Identity Token
-        uses: actions/github-script@v7
-        id: idToken
-        with:
-          script: |
-            let id_token = await core.getIDToken('safedep-ghcp')
-            core.setOutput('id_token', id_token)
+          APP_LOG_LEVEL: debug
 
       - name: Execute E2E Tests
         run: |
           # Run buf curl based tests
           buf curl -vv --protocol grpc --http2-prior-knowledge \
-            --header "Authorization: Bearer $GITHUB_ID_TOKEN" \
+            --header "Authorization: Bearer $GHCP_AUTH_TOKEN" \
             --schema buf.build/safedep/api \
             http://localhost:8000/safedep.services.ghcp.v1.GitHubCommentsProxyService/CreatePullRequestComment \
-            -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "$PR_NUMBER", "body": "**E2E Test** Tag: 1234567890"}' 
+            -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "${{ github.event.pull_request.number }}", "body": "**E2E Test** Tag: 1234567890"}' 
         env:
-          GITHUB_ID_TOKEN: ${{ steps.idToken.outputs.id_token }}
-          PR_NUMBER: "1"
+          GHCP_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Show Server Logs
+        if: ${{ always() }}
+        run: sleep 2 && cat /tmp/ghcp-server.log
 
       - name: Stop Server
         run: |

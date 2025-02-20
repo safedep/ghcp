@@ -9,6 +9,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/golang-jwt/jwt"
+	"github.com/safedep/dry/log"
 	"github.com/safedep/ghcp/pkg/adapters/github"
 	"github.com/safedep/ghcp/pkg/gh"
 )
@@ -87,6 +88,8 @@ func (i *authenticationInterceptor) isPAT(token string) bool {
 
 // authenticateUsingPAT authenticates the PAT token and returns the internal GitHub token context
 func (i *authenticationInterceptor) authenticateUsingPAT(ctx context.Context, token string) (gh.GitHubTokenContext, error) {
+	log.Debugf("Authenticating using GITHUB_TOKEN")
+
 	adapter, err := github.NewGitHubAdapter(github.GitHubAdapterConfig{
 		Token: token,
 	})
@@ -94,22 +97,43 @@ func (i *authenticationInterceptor) authenticateUsingPAT(ctx context.Context, to
 		return gh.GitHubTokenContext{}, fmt.Errorf("failed to create GitHub adapter: %w", err)
 	}
 
-	userInfo, err := adapter.GetTokenUser(ctx, token)
-	if err != nil {
-		return gh.GitHubTokenContext{}, fmt.Errorf("failed to get token user: %w", err)
-	}
+	tokenContext := gh.GitHubTokenContext{}
 
-	var tokenContext gh.GitHubTokenContext
+	// Try to get the user info to check if the token is a PAT
+	if userInfo, err := adapter.GetTokenUser(ctx, token); err == nil {
+		// This is weird case, but it can happen if the token is a PAT
+		if userInfo.GetType() != "User" {
+			return gh.GitHubTokenContext{}, fmt.Errorf("token is not a user token expected a user token")
+		}
 
-	if userInfo.GetLogin() != "" {
 		tokenContext.Actor = userInfo.GetLogin()
+		tokenContext.TokenType = gh.TokenTypeUser
+
+		log.Debugf("Token user: %+v", userInfo)
+		log.Debugf("Token context: %+v", tokenContext)
+
+		return tokenContext, nil
 	}
 
+	// Fallback to just validating the token by making a request to the GitHub API
+	// This is the case for GITHUB_TOKEN injected by GitHub Actions
+	_, err = adapter.GetRateLimits(ctx)
+	if err != nil {
+		return gh.GitHubTokenContext{}, fmt.Errorf("failed to validate token: %w", err)
+	}
+
+	// We can't really do meaningful authorization with a GHA token without
+	// having access to the request. So we just create a token and mark it as
+	// action token for the service to do its own authorization.
+
+	tokenContext.TokenType = gh.TokenTypeAction
 	return tokenContext, nil
 }
 
 // authenticateUsingJWT authenticates the OIDC token and returns the internal GitHub token context
 func (i *authenticationInterceptor) authenticateUsingJWT(ctx context.Context, authHeader string) (gh.GitHubTokenContext, error) {
+	log.Debugf("Authenticating using Workload Identity Token (JWT)")
+
 	var tokenContext gh.GitHubTokenContext
 
 	// Authenticate the OIDC token
@@ -127,6 +151,8 @@ func (i *authenticationInterceptor) authenticateUsingJWT(ctx context.Context, au
 	if err != nil {
 		return tokenContext, connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("token parsing failed: %w", err))
 	}
+
+	log.Debugf("Token claims: %+v", claims)
 
 	if s, ok := claims["iss"].(string); ok {
 		tokenContext.Issuer = s
@@ -192,6 +218,9 @@ func (i *authenticationInterceptor) authenticateUsingJWT(ctx context.Context, au
 		tokenContext.WorkflowRef = s
 	}
 
+	log.Debugf("Token context: %+v", tokenContext)
+
+	tokenContext.TokenType = gh.TokenTypeWorkloadIdentity
 	return tokenContext, nil
 }
 

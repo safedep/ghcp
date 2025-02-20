@@ -2,7 +2,6 @@ package ghcp
 
 import (
 	"context"
-	"fmt"
 	"regexp"
 	"testing"
 
@@ -34,6 +33,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				Repository:      "safedep/ghcp",
 				RepositoryOwner: "safedep",
 				Audience:        GitHubTokenAudienceName,
+				TokenType:       gh.TokenTypeWorkloadIdentity,
 			},
 			mock: func(m *github.MockGitHubIssueAdapter, m2 *github.MockGitHubRepositoryAdapter) {
 				m.EXPECT().CreateIssueComment(mock.Anything, "safedep", "ghcp", 1,
@@ -148,6 +148,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				Repository:      "safedep/ghcp",
 				RepositoryOwner: "safedep",
 				Audience:        GitHubTokenAudienceName,
+				TokenType:       gh.TokenTypeWorkloadIdentity,
 			},
 			mock: func(m *github.MockGitHubIssueAdapter, m2 *github.MockGitHubRepositoryAdapter) {
 				m.EXPECT().ListIssueComments(mock.Anything, "safedep", "ghcp", 1).
@@ -178,6 +179,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				Repository:      "safedep/ghcp",
 				RepositoryOwner: "safedep",
 				Audience:        GitHubTokenAudienceName,
+				TokenType:       gh.TokenTypeWorkloadIdentity,
 			},
 			request: &ghcpv1.CreatePullRequestCommentRequest{
 				Owner:    "safedep",
@@ -206,6 +208,7 @@ func TestGitHubCommentProxyService(t *testing.T) {
 				Repository:      "safedep/ghcp",
 				RepositoryOwner: "safedep",
 				Audience:        GitHubTokenAudienceName,
+				TokenType:       gh.TokenTypeWorkloadIdentity,
 			},
 			mock: func(m *github.MockGitHubIssueAdapter, m2 *github.MockGitHubRepositoryAdapter) {
 				m.EXPECT().ListIssueComments(mock.Anything, "safedep", "ghcp", 1).
@@ -233,26 +236,10 @@ func TestGitHubCommentProxyService(t *testing.T) {
 			},
 		},
 		{
-			name:             "create comment fails when both installation verifiers and workload identity token verification are skipped",
-			serviceInitError: fmt.Errorf("skip workload identity token verification is true but no installation verifiers are provided"),
-			config: GitHubCommentProxyServiceConfig{
-				SkipWorkloadIdentityTokenVerification: true,
-			},
-			request: &ghcpv1.CreatePullRequestCommentRequest{
-				Owner:    "safedep",
-				Repo:     "ghcp",
-				PrNumber: "1",
-				Body:     "test comment",
-			},
-			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
-				assert.Error(t, err)
-				assert.Nil(t, res)
-			},
-		},
-		{
 			name: "create comment is successful when workload identity token verification is skipped and installation verifiers are provided",
 			config: GitHubCommentProxyServiceConfig{
-				SkipWorkloadIdentityTokenVerification: true,
+				InsecureSkipAuthorization: true,
+				VerifyInstallation:        true,
 				InstallationVerifiers: []GitHubCommentsProxyInstallationVerifier{
 					{
 						Path:   "/.github/workflows/test-path",
@@ -275,6 +262,25 @@ func TestGitHubCommentProxyService(t *testing.T) {
 			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
 				assert.NoError(t, err)
 				assert.NotEmpty(t, res.GetCommentId())
+			},
+		},
+		{
+			name: "create comment fails when user token is provided",
+			config: GitHubCommentProxyServiceConfig{
+				GitHubTokenAudienceName: GitHubTokenAudienceName,
+			},
+			token: &gh.GitHubTokenContext{
+				TokenType: gh.TokenTypeUser,
+			},
+			request: &ghcpv1.CreatePullRequestCommentRequest{
+				Owner:    "safedep",
+				Repo:     "ghcp",
+				PrNumber: "1",
+				Body:     "test comment",
+			},
+			assert: func(t *testing.T, err error, res *ghcpv1.CreatePullRequestCommentResponse) {
+				assert.Error(t, err)
+				assert.Nil(t, res)
 			},
 		},
 	}

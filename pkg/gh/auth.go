@@ -7,6 +7,14 @@ import (
 
 type githubTokenContextKey struct{}
 
+type TokenType string
+
+const (
+	TokenTypeAction           TokenType = "action"
+	TokenTypeUser             TokenType = "user"
+	TokenTypeWorkloadIdentity TokenType = "workload_identity"
+)
+
 // GitHubTokenContext holds information extracted from the GitHub Workload Identity Token
 // https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect
 type GitHubTokenContext struct {
@@ -33,6 +41,9 @@ type GitHubTokenContext struct {
 	RefType              string `json:"ref_type"`
 	EventName            string `json:"event_name"`
 	JobWorkflowRef       string `json:"job_workflow_ref"`
+
+	// TokenType is the type of token
+	TokenType TokenType
 }
 
 // Inject GitHub token context into the context
@@ -48,4 +59,20 @@ func ExtractGitHubTokenContext(ctx context.Context) (GitHubTokenContext, error) 
 	}
 
 	return tokenContext, nil
+}
+
+func (t *GitHubTokenContext) SetTokenType(tokenType TokenType) {
+	t.TokenType = tokenType
+}
+
+func (t GitHubTokenContext) IsActionToken() bool {
+	return t.TokenType == TokenTypeAction
+}
+
+func (t GitHubTokenContext) IsUserToken() bool {
+	return t.TokenType == TokenTypeUser
+}
+
+func (t GitHubTokenContext) IsWorkloadIdentityToken() bool {
+	return t.TokenType == TokenTypeWorkloadIdentity
 }
