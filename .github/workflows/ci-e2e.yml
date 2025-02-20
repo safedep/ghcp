@@ -1,9 +1,8 @@
 name: E2E Tests
 on:
-  push:
+  pull_request:
     branches:
       - main
-      - fix/github_token_auth
 
 permissions:
   contents: read
@@ -52,7 +51,7 @@ jobs:
             --header "Authorization: Bearer $GHCP_AUTH_TOKEN" \
             --schema buf.build/safedep/api \
             http://localhost:8000/safedep.services.ghcp.v1.GitHubCommentsProxyService/CreatePullRequestComment \
-            -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "1", "body": "**E2E Test** Tag: 1234567890"}' 
+            -d '{"owner": "safedep", "repo": "ghcp", "pr_number": "${{ github.event.pull_request.number }}", "body": "**E2E Test** Tag: 1234567890"}' 
         env:
           GHCP_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
