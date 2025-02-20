@@ -23,8 +23,8 @@ For the request to be successful, the following conditions must be met:
 A publicly accessible version of the API is hosted at `https://ghcp-integrations.safedep.io`. The API is
 authenticated using any of:
 
-1. GitHub Workload Identity token
-2. GitHub Actions Tokens (`$GITHUB_TOKEN`)
+1. GitHub [Workload Identity token](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect)
+2. GitHub [Actions Token](https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication#permissions-for-the-github_token) (`$GITHUB_TOKEN`)
 
 ### Limits
 
