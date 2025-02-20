@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - fix/github_token_auth
 
 permissions:
   contents: read
